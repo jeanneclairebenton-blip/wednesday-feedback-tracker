@@ -47,6 +47,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
   <script type="text/babel">
     const { useState, useEffect, useCallback, useRef } = React;
@@ -156,6 +157,29 @@
         setTimeout(() => setCopied(false), 2200);
       };
 
+      const exportExcel = () => {
+        const src = historyWeek ? allWeeks[historyWeek] : entries;
+        const filled = (src || []).filter((e) => e.name.trim());
+        if (!filled.length) return;
+        const rows = filled.map((e, i) => ({
+          "#": i + 1,
+          "Agent Name": e.name,
+          "Attending": e.attending === true ? "YES" : e.attending === false ? "NO" : "",
+          "How They're Doing": e.mood || "",
+          "Feedback": e.feedback || "",
+        }));
+        const yCount = filled.filter((e) => e.attending === true).length;
+        const nCount = filled.filter((e) => e.attending === false).length;
+        rows.push({});
+        rows.push({ "#": "", "Agent Name": `Total: ${filled.length}`, "Attending": `Yes: ${yCount} / No: ${nCount}`, "How They're Doing": "", "Feedback": "" });
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws["!cols"] = [{ wch: 4 }, { wch: 22 }, { wch: 12 }, { wch: 30 }, { wch: 35 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Wednesday Check-In");
+        const weekLabel = historyWeek || weekId;
+        XLSX.writeFile(wb, `MHB-Wednesday-CheckIn-${weekLabel}.xlsx`);
+      };
+
       const filled = entries.filter((e) => e.name.trim());
       const yesC = filled.filter((e) => e.attending === true).length;
       const noC = filled.filter((e) => e.attending === false).length;
@@ -215,6 +239,9 @@
               </button>
             ))}
             <div style={{ marginLeft: "auto", display: "flex", gap: 6, paddingBottom: 6 }}>
+              <button onClick={exportExcel} className="fb-btn-gold" style={{ background: "#111", color: "#c8a000", border: "1px solid #c8a000", borderRadius: 6, padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s" }}>
+                ↓ Export Excel
+              </button>
               <button onClick={copyText} className="fb-btn-gold" style={{ background: "#c8a000", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s" }}>
                 {copied ? "✓ Copied" : "Copy Summary"}
               </button>
