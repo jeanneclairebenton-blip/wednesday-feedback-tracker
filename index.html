@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wednesday Check-In · Myers Home Buyers</title>
+  <meta name="description" content="Weekly agent feedback tracker for Myers Home Buyers Wednesday check-ins." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: #fafaf8;
+      min-height: 100%;
+      color: #1a1a1a;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+    .fb-row:hover { background: rgba(200,160,0,.04) !important; }
+    .fb-input:focus { border-color: #c8a000 !important; box-shadow: 0 0 0 2px rgba(200,160,0,.12) !important; }
+    .fb-textarea:focus { border-color: #c8a000 !important; box-shadow: 0 0 0 2px rgba(200,160,0,.12) !important; }
+    .fb-tab { position:relative; transition: color .2s; }
+    .fb-tab::after { content:''; position:absolute; bottom:-2px; left:0; right:0; height:2px; background:#c8a000; transform:scaleX(0); transition:transform .25s cubic-bezier(.4,0,.2,1); }
+    .fb-tab[data-active="true"]::after { transform:scaleX(1); }
+    .fb-tab[data-active="true"] { color:#c8a000 !important; }
+    .fb-btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .fb-btn-outline:hover { background: rgba(200,160,0,.08) !important; border-color: #c8a000 !important; color: #c8a000 !important; }
+    .fb-remove:hover { background: #fee !important; color: #c44 !important; }
+    .fb-attend-btn { transition: all .18s ease !important; }
+    .fb-attend-btn:hover { transform: scale(1.04); }
+    .ss-row:nth-child(even) { background: rgba(0,0,0,.015); }
+    .ss-row:hover { background: rgba(200,160,0,.06) !important; }
+    .week-btn:hover { background: #1a1a1a !important; border-color: #c8a000 !important; color: #c8a000 !important; }
+    input::placeholder, textarea::placeholder { color: #bbb; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    const STORAGE_KEY = "wednesday-feedback-v2";
+
+    const getWeekId = () => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), 0, 1);
+      const diff = now - start;
+      const week = Math.ceil(diff / (7 * 24 * 60 * 60 * 1000));
+      return `${now.getFullYear()}-W${String(week).padStart(2, "0")}`;
+    };
+
+    const formatDatePretty = () =>
+      new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+
+    const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const blankRow = () => ({
+      id: uid(),
+      name: "",
+      attending: null,
+      mood: "",
+      feedback: "",
+      ts: Date.now(),
+    });
+
+    function WednesdayTracker() {
+      const [entries, setEntries] = useState([blankRow()]);
+      const [weekId] = useState(getWeekId());
+      const [allWeeks, setAllWeeks] = useState({});
+      const [view, setView] = useState("input");
+      const [loading, setLoading] = useState(true);
+      const [copied, setCopied] = useState(false);
+      const [historyWeek, setHistoryWeek] = useState(null);
+      const bottomRef = useRef(null);
+
+      useEffect(() => {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const d = JSON.parse(raw);
+            setAllWeeks(d);
+            if (d[getWeekId()]?.length) setEntries(d[getWeekId()]);
+          }
+        } catch {}
+        setLoading(false);
+      }, []);
+
+      const persist = useCallback(
+        (rows) => {
+          const next = { ...allWeeks, [weekId]: rows };
+          setAllWeeks(next);
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+        },
+        [allWeeks, weekId]
+      );
+
+      const set = (id, k, v) => {
+        const u = entries.map((e) => (e.id === id ? { ...e, [k]: v } : e));
+        setEntries(u);
+        persist(u);
+      };
+      const add = () => {
+        const u = [...entries, blankRow()];
+        setEntries(u);
+        persist(u);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+      };
+      const remove = (id) => {
+        if (entries.length < 2) return;
+        const u = entries.filter((e) => e.id !== id);
+        setEntries(u);
+        persist(u);
+      };
+      const clearAll = () => {
+        if (!confirm("Clear all entries for this week?")) return;
+        const u = [blankRow()];
+        setEntries(u);
+        persist(u);
+      };
+
+      const copyText = () => {
+        const src = historyWeek ? allWeeks[historyWeek] : entries;
+        const filled = (src || []).filter((e) => e.name.trim());
+        if (!filled.length) return;
+        const lines = [`WEDNESDAY CHECK-IN  ·  ${historyWeek || formatDatePretty()}`, "═".repeat(48), ""];
+        filled.forEach((e, i) => {
+          lines.push(`${String(i + 1).padStart(2, " ")}. ${e.name}`);
+          lines.push(`    Attending:  ${e.attending === true ? "YES" : e.attending === false ? "NO" : "—"}`);
+          lines.push(`    Status:     ${e.mood || "—"}`);
+          lines.push(`    Feedback:   ${e.feedback || "—"}`);
+          lines.push("");
+        });
+        const y = filled.filter((e) => e.attending === true).length;
+        const n = filled.filter((e) => e.attending === false).length;
+        lines.push("═".repeat(48));
+        lines.push(`TOTAL: ${filled.length}  ·  YES: ${y}  ·  NO: ${n}`);
+        navigator.clipboard.writeText(lines.join("\n"));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2200);
+      };
+
+      const filled = entries.filter((e) => e.name.trim());
+      const yesC = filled.filter((e) => e.attending === true).length;
+      const noC = filled.filter((e) => e.attending === false).length;
+      const pendC = filled.filter((e) => e.attending === null).length;
+      const pastKeys = Object.keys(allWeeks).filter((k) => k !== weekId).sort().reverse();
+      const sheetData = historyWeek ? (allWeeks[historyWeek] || []).filter((e) => e.name.trim()) : filled;
+
+      if (loading)
+        return (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 300, fontFamily: "Outfit" }}>
+            <div style={{ width: 28, height: 28, border: "3px solid #222", borderTopColor: "#c8a000", borderRadius: "50%", animation: "pulse 1s ease infinite" }} />
+          </div>
+        );
+
+      return (
+        <div style={{ fontFamily: "'Outfit', sans-serif", maxWidth: 780, margin: "0 auto", padding: "28px 16px 40px", color: "#1a1a1a", animation: "fadeUp .5s ease" }}>
+
+          {/* HEADER */}
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 6 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "#c8a000", marginBottom: 4 }}>Myers Home Buyers</div>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: "-.02em", lineHeight: 1.15 }}>Wednesday Check‑In</h1>
+            </div>
+            <span style={{ fontSize: 12, color: "#999", fontWeight: 400, paddingBottom: 4 }}>{formatDatePretty()}</span>
+          </div>
+          <div style={{ height: 2, background: "linear-gradient(90deg, #c8a000 0%, #c8a00022 60%, transparent 100%)", borderRadius: 2, marginBottom: 22 }} />
+
+          {/* STATS */}
+          <div style={{ display: "flex", gap: 1, borderRadius: 10, overflow: "hidden", marginBottom: 22, background: "#111" }}>
+            {[
+              { n: filled.length, l: "Called", c: "#fff" },
+              { n: yesC, l: "Attending", c: "#c8a000" },
+              { n: noC, l: "Declined", c: "#f47068" },
+              { n: pendC, l: "Pending", c: "#666" },
+            ].map((s, i) => (
+              <div key={i} style={{ flex: 1, textAlign: "center", padding: "14px 0 12px", background: i > 0 ? "#141414" : "#111" }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: s.c, fontFamily: "'Playfair Display', serif", lineHeight: 1 }}>{s.n}</div>
+                <div style={{ fontSize: 9, fontWeight: 600, color: "#666", letterSpacing: ".1em", textTransform: "uppercase", marginTop: 4 }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* TABS */}
+          <div style={{ display: "flex", gap: 28, marginBottom: 20, borderBottom: "1px solid #eee", paddingBottom: 0, flexWrap: "wrap", alignItems: "center" }}>
+            {[
+              { key: "input", label: "Input Form" },
+              { key: "sheet", label: "Spreadsheet View" },
+            ].map((t) => (
+              <button
+                key={t.key}
+                className="fb-tab"
+                data-active={String(view === t.key && !historyWeek)}
+                onClick={() => { setView(t.key); setHistoryWeek(null); }}
+                style={{ background: "none", border: "none", fontFamily: "'Outfit'", fontSize: 13, fontWeight: 600, color: (view === t.key && !historyWeek) ? "#c8a000" : "#999", cursor: "pointer", paddingBottom: 10, letterSpacing: ".02em" }}
+              >
+                {t.label}
+              </button>
+            ))}
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6, paddingBottom: 6 }}>
+              <button onClick={copyText} className="fb-btn-gold" style={{ background: "#c8a000", color: "#fff", border: "none", borderRadius: 6, padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s" }}>
+                {copied ? "✓ Copied" : "Copy Summary"}
+              </button>
+            </div>
+          </div>
+
+          {/* WEEK PILLS */}
+          {pastKeys.length > 0 && view === "sheet" && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: "#bbb", letterSpacing: ".1em", textTransform: "uppercase", marginRight: 4 }}>Week:</span>
+              <button className="week-btn" onClick={() => setHistoryWeek(null)}
+                style={{ padding: "5px 14px", borderRadius: 20, border: `1px solid ${!historyWeek ? "#c8a000" : "#e0e0e0"}`, background: !historyWeek ? "#111" : "transparent", color: !historyWeek ? "#c8a000" : "#999", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s" }}>
+                Current
+              </button>
+              {pastKeys.map((w) => (
+                <button key={w} className="week-btn" onClick={() => setHistoryWeek(w)}
+                  style={{ padding: "5px 14px", borderRadius: 20, border: `1px solid ${historyWeek === w ? "#c8a000" : "#e0e0e0"}`, background: historyWeek === w ? "#111" : "transparent", color: historyWeek === w ? "#c8a000" : "#999", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s" }}>
+                  {w}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* INPUT VIEW */}
+          {view === "input" && !historyWeek && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {entries.map((entry, idx) => (
+                  <div key={entry.id} className="fb-row"
+                    style={{ background: "#fff", border: "1px solid #ebebeb", borderRadius: 12, padding: "18px 20px", boxShadow: "0 1px 3px rgba(0,0,0,.04)", transition: "background .2s", animation: "fadeUp .35s ease", animationDelay: `${idx * 40}ms`, animationFillMode: "backwards" }}>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#111", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <span style={{ color: "#c8a000", fontSize: 12, fontWeight: 700, fontFamily: "'Playfair Display'" }}>{idx + 1}</span>
+                      </div>
+                      <input className="fb-input" placeholder="Agent name" value={entry.name}
+                        onChange={(e) => set(entry.id, "name", e.target.value)}
+                        style={{ flex: 1, fontSize: 15, fontWeight: 600, padding: "9px 14px", border: "1px solid #e4e4e4", borderRadius: 8, outline: "none", fontFamily: "Outfit", background: "#fafafa", transition: "all .2s" }} />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="fb-attend-btn" onClick={() => set(entry.id, "attending", true)}
+                          style={{ padding: "8px 18px", borderRadius: 7, border: entry.attending === true ? "2px solid #c8a000" : "1px solid #ddd", background: entry.attending === true ? "#c8a000" : "#fff", color: entry.attending === true ? "#fff" : "#bbb", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Outfit", letterSpacing: ".04em" }}>YES</button>
+                        <button className="fb-attend-btn" onClick={() => set(entry.id, "attending", false)}
+                          style={{ padding: "8px 18px", borderRadius: 7, border: entry.attending === false ? "2px solid #333" : "1px solid #ddd", background: entry.attending === false ? "#222" : "#fff", color: entry.attending === false ? "#fff" : "#bbb", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Outfit", letterSpacing: ".04em" }}>NO</button>
+                      </div>
+                      {entries.length > 1 && (
+                        <button className="fb-remove" onClick={() => remove(entry.id)}
+                          style={{ width: 28, height: 28, border: "none", background: "#f5f5f5", color: "#ccc", borderRadius: 6, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all .15s" }}>×</button>
+                      )}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#aaa", letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>How are they doing?</label>
+                        <input className="fb-input" placeholder="e.g. Busy with closings, feeling great"
+                          value={entry.mood} onChange={(e) => set(entry.id, "mood", e.target.value)}
+                          style={{ width: "100%", fontSize: 13, padding: "9px 12px", border: "1px solid #e4e4e4", borderRadius: 8, outline: "none", fontFamily: "Outfit", background: "#fafafa", boxSizing: "border-box", transition: "all .2s" }} />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: 10, fontWeight: 600, color: "#aaa", letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>Feedback</label>
+                        <input className="fb-input" placeholder="Suggestions, concerns, shout-outs..."
+                          value={entry.feedback} onChange={(e) => set(entry.id, "feedback", e.target.value)}
+                          style={{ width: "100%", fontSize: 13, padding: "9px 12px", border: "1px solid #e4e4e4", borderRadius: 8, outline: "none", fontFamily: "Outfit", background: "#fafafa", boxSizing: "border-box", transition: "all .2s" }} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={bottomRef} />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
+                <button onClick={add} className="fb-btn-gold"
+                  style={{ background: "#111", color: "#c8a000", border: "none", borderRadius: 8, padding: "11px 24px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s", letterSpacing: ".02em" }}>
+                  + Add Agent
+                </button>
+                <button onClick={clearAll} className="fb-btn-outline"
+                  style={{ background: "transparent", color: "#ccc", border: "1px solid #e0e0e0", borderRadius: 8, padding: "10px 20px", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "Outfit", transition: "all .15s" }}>
+                  Clear All
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* SPREADSHEET VIEW */}
+          {(view === "sheet" || historyWeek) && (
+            <div style={{ animation: "fadeUp .4s ease", borderRadius: 12, overflow: "hidden", border: "1px solid #e4e4e4", boxShadow: "0 2px 8px rgba(0,0,0,.04)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "42px 1.8fr 90px 2fr 2.5fr", background: "#111", color: "#999", fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase" }}>
+                <div style={{ padding: "12px 8px", textAlign: "center", color: "#555" }}>#</div>
+                <div style={{ padding: "12px 14px", borderLeft: "1px solid #222" }}>Agent Name</div>
+                <div style={{ padding: "12px 10px", textAlign: "center", borderLeft: "1px solid #222" }}>Event</div>
+                <div style={{ padding: "12px 14px", borderLeft: "1px solid #222" }}>How They're Doing</div>
+                <div style={{ padding: "12px 14px", borderLeft: "1px solid #222" }}>Feedback</div>
+              </div>
+
+              {sheetData.length === 0 ? (
+                <div style={{ padding: 40, textAlign: "center", color: "#bbb", fontSize: 14 }}>
+                  {historyWeek ? "No entries for this week." : "Start adding agents in the Input Form tab."}
+                </div>
+              ) : (
+                sheetData.map((e, i) => (
+                  <div key={e.id} className="ss-row"
+                    style={{ display: "grid", gridTemplateColumns: "42px 1.8fr 90px 2fr 2.5fr", borderTop: "1px solid #f0f0f0", fontSize: 13, color: "#333", animation: "fadeUp .3s ease", animationDelay: `${i * 30}ms`, animationFillMode: "backwards", transition: "background .15s" }}>
+                    <div style={{ padding: "13px 8px", textAlign: "center", color: "#bbb", fontWeight: 600, fontSize: 12 }}>{i + 1}</div>
+                    <div style={{ padding: "13px 14px", fontWeight: 600, borderLeft: "1px solid #f5f5f5" }}>{e.name}</div>
+                    <div style={{ padding: "13px 10px", textAlign: "center", borderLeft: "1px solid #f5f5f5" }}>
+                      {e.attending === true ? (
+                        <span style={{ background: "#c8a000", color: "#fff", padding: "3px 12px", borderRadius: 20, fontSize: 10, fontWeight: 700, letterSpacing: ".06em" }}>YES</span>
+                      ) : e.attending === false ? (
+                        <span style={{ background: "#333", color: "#fff", padding: "3px 12px", borderRadius: 20, fontSize: 10, fontWeight: 700, letterSpacing: ".06em" }}>NO</span>
+                      ) : (
+                        <span style={{ color: "#ddd", fontSize: 12 }}>—</span>
+                      )}
+                    </div>
+                    <div style={{ padding: "13px 14px", color: "#555", borderLeft: "1px solid #f5f5f5", lineHeight: 1.4 }}>{e.mood || <span style={{ color: "#ddd" }}>—</span>}</div>
+                    <div style={{ padding: "13px 14px", color: "#555", borderLeft: "1px solid #f5f5f5", lineHeight: 1.4 }}>{e.feedback || <span style={{ color: "#ddd" }}>—</span>}</div>
+                  </div>
+                ))
+              )}
+
+              {sheetData.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "42px 1.8fr 90px 2fr 2.5fr", borderTop: "2px solid #e0e0e0", background: "#f8f7f5", fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                  <div style={{ padding: "12px 8px" }} />
+                  <div style={{ padding: "12px 14px", color: "#888" }}>Total: {sheetData.length}</div>
+                  <div style={{ padding: "12px 10px", textAlign: "center" }}>
+                    <span style={{ color: "#c8a000" }}>{sheetData.filter((e) => e.attending === true).length}</span>
+                    <span style={{ color: "#ccc" }}> / </span>
+                    <span style={{ color: "#888" }}>{sheetData.filter((e) => e.attending === false).length}</span>
+                  </div>
+                  <div style={{ padding: "12px 14px" }} />
+                  <div style={{ padding: "12px 14px" }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ textAlign: "center", marginTop: 32, fontSize: 9, color: "#ccc", letterSpacing: ".12em", textTransform: "uppercase", fontWeight: 500 }}>
+            Myers Home Buyers · Weekly Agent Feedback Tracker
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<WednesdayTracker />);
+  </script>
+</body>
+</html>
